@@ -4,9 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Handam 가격 비교</title>
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script>
+  window.addEventListener('error', function(e) {
+    var el = document.getElementById('root');
+    if (!el) return;
+    el.innerHTML = '<div style="padding:20px;font-family:monospace;white-space:pre-wrap;color:#dc2626;font-size:13px;line-height:1.6;">🔴 에러 발생 (이 화면 캡처해서 보내주세요)\n\n' +
+      (e.message||'(메시지 없음)') + '\n' +
+      (e.filename ? ('파일: ' + e.filename + ':' + e.lineno + ':' + e.colno) : '') + '\n\n' +
+      (e.error && e.error.stack ? e.error.stack : '(스택 없음)') + '</div>';
+  });
+  window.addEventListener('unhandledrejection', function(e) {
+    var el = document.getElementById('root');
+    if (!el) return;
+    el.innerHTML = '<div style="padding:20px;font-family:monospace;white-space:pre-wrap;color:#dc2626;font-size:13px;line-height:1.6;">🔴 Promise 에러 (이 화면 캡처해서 보내주세요)\n\n' +
+      (e.reason && e.reason.stack ? e.reason.stack : String(e.reason)) + '</div>';
+  });
+</script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.19.0/babel.min.js"></script>
 <style>
   html, body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
   * { box-sizing: border-box; }
@@ -14,7 +30,7 @@
 </head>
 <body>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
+<script type="text/babel-source" id="app-source">
 const { useState, useEffect, useMemo } = React;
 
 const DOW_LABELS = ['일','월','화','수','목','금','토'];
@@ -1272,6 +1288,15 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+<script>
+  (function() {
+    var source = document.getElementById('app-source').textContent;
+    var output = Babel.transform(source, { presets: [['react', { runtime: 'classic' }]] }).code;
+    var s = document.createElement('script');
+    s.textContent = output;
+    document.body.appendChild(s);
+  })();
 </script>
 </body>
 </html>
