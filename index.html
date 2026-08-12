@@ -309,7 +309,7 @@ function App() {
   }); // 8/9 시스코 주문완료 19개 전부 반영됨
   const [aliases, setAliases] = useState({}); // 인식된 원문 이름(소문자) -> itemId, 한번 수동 연결하면 계속 기억
   const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState('claude-sonnet-5');
+  const [model, setModel] = useState('claude-haiku-4-5-20251001');
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -1273,9 +1273,9 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
             <input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="sk-ant-..."
               style={{ width:'100%', boxSizing:'border-box', padding:'9px 10px', borderRadius:8, border:'1px solid #ddd', fontSize:12.5, marginBottom:12 }} />
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>모델</div>
-            <input value={model} onChange={e=>setModel(e.target.value)} placeholder="claude-sonnet-5"
+            <input value={model} onChange={e=>setModel(e.target.value)} placeholder="claude-haiku-4-5-20251001"
               style={{ width:'100%', boxSizing:'border-box', padding:'9px 10px', borderRadius:8, border:'1px solid #ddd', fontSize:12.5, marginBottom:4 }} />
-            <div style={{ fontSize: 10, color: '#aaa', marginBottom: 16 }}>기본값 claude-sonnet-5. 더 저렴하게 쓰려면 claude-haiku-4-5-20251001로 바꿔도 돼.</div>
+            <div style={{ fontSize: 10, color: '#aaa', marginBottom: 16 }}>기본값 claude-haiku-4-5-20251001 (저렴하고 충분히 정확함). 손글씨가 유독 지저분한 인보이스에서 자꾸 틀리면 claude-sonnet-5로 바꿔봐도 돼.</div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={()=>setShowSettings(false)} style={{ flex:1, padding:11, borderRadius:9, border:'1px solid #ddd', background:'#f9fafb', fontSize:13, cursor:'pointer' }}>닫기</button>
               <button onClick={()=>{ setUploadError(null); setShowSettings(false); }} style={{ flex:1, padding:11, borderRadius:9, border:'none', background:'#111', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>저장</button>
