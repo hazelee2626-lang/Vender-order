@@ -308,8 +308,11 @@ function App() {
     items: { m6:1, m9:1, m21:2, f10:1, c3:1, x38:5, m4:1, m15:4, c21:1, p25:1, x36:1, b1:3, b2:2, b3:1, b4:1, b5:1, b6:1, b7:1, x44:1 }
   }); // 8/9 시스코 주문완료 19개 전부 반영됨
   const [aliases, setAliases] = useState({}); // 인식된 원문 이름(소문자) -> itemId, 한번 수동 연결하면 계속 기억
+  const [orderSearchText, setOrderSearchText] = useState({}); // 매칭안됨 idx -> 검색어
+  const [syscoSearchText, setSyscoSearchText] = useState({});
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('claude-haiku-4-5-20251001');
+  const [handwritingModel, setHandwritingModel] = useState('claude-sonnet-5');
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
@@ -325,15 +328,16 @@ function App() {
         if (s.aliases) setAliases(s.aliases);
         if (s.apiKey) setApiKey(s.apiKey);
         if (s.model) setModel(s.model);
+        if (s.handwritingModel) setHandwritingModel(s.handwritingModel);
       }
     } catch (e) { console.error(e); }
     setLoaded(true);
   }, []);
   useEffect(() => {
     if (!loaded) return;
-    try { localStorage.setItem('handam-data', JSON.stringify({ vendors, items, meta, cart, syscoToday, aliases, apiKey, model })); }
+    try { localStorage.setItem('handam-data', JSON.stringify({ vendors, items, meta, cart, syscoToday, aliases, apiKey, model, handwritingModel })); }
     catch (e) { console.error(e); }
-  }, [vendors, items, meta, cart, syscoToday, aliases, apiKey, model, loaded]);
+  }, [vendors, items, meta, cart, syscoToday, aliases, apiKey, model, handwritingModel, loaded]);
 
   function systemDateLabel(offsetDays) {
     const d = new Date(); d.setDate(d.getDate() + offsetDays);
@@ -461,10 +465,14 @@ function App() {
               'anthropic-dangerous-direct-browser-access': 'true'
             },
             body: JSON.stringify({
-              model, max_tokens: 4000,
+              model: handwritingModel, max_tokens: 4000,
               messages: [{ role: 'user', content: [
                 block,
                 { type: 'text', text: `한국 BBQ 레스토랑의 손글씨 주문지 사진입니다. 인쇄된 표의 "#" 칸에 손글씨 숫자가 적힌 행만 추출하세요(빈 칸은 무시). 표 밖에 손으로 추가로 적은 품목+숫자도 포함하세요.
+중요:
+- 표의 모든 행을 위에서 아래까지 하나도 빠짐없이 확인하세요. 특히 표 맨 아래쪽, 페이지 하단, 여백에 적힌 항목을 놓치기 쉬우니 두 번 확인하세요.
+- 숫자는 정수뿐 아니라 0.5, 1.5 같은 반 단위(half-case)로도 자주 적혀있습니다. 흐린 연필/볼펜 자국, 겹쳐 쓴 숫자, 작은 소수점을 특히 주의해서 정확히 읽으세요. 확신이 안 서면 이미지를 다시 자세히 보고 가장 가능성 높은 값을 쓰세요.
+- 숫자가 지워지거나 겹쳐써진 경우 최종적으로 남은(가장 나중에 쓴) 숫자를 사용하세요.
 ## 카탈로그 품목명(매칭 참고용, 없는 품목이어도 원문 이름 그대로 포함):
 ${itemCatalog}
 다른 설명 없이 JSON만 응답: {"items":[{"name":"...","qty":2}]}` }
@@ -523,6 +531,22 @@ ${itemCatalog}
     });
     const rawName = orderPending.unmatched[idx]?.name;
     if (rawName) setAliases(prev => ({ ...prev, [rawName.trim().toLowerCase()]: itemId }));
+  }
+  function addNewFromOrderUnmatched(idx, typedName) {
+    const name = (typedName || '').trim();
+    if (!name) return;
+    const newId = genId();
+    setItems(prev => [...prev, { id: newId, cat: 'produce', name, prices: {} }]);
+    setOrderPending(prev => {
+      const u = prev.unmatched[idx];
+      return {
+        ...prev,
+        unmatched: prev.unmatched.filter((_,i)=>i!==idx),
+        matchedItems: [...prev.matchedItems, { key: newId, itemId: newId, itemName: name, qty: u.qty, include: true, alreadySysco: false }]
+      };
+    });
+    const rawName = orderPending.unmatched[idx]?.name;
+    if (rawName) setAliases(prev => ({ ...prev, [rawName.trim().toLowerCase()]: newId }));
   }
   function applyOrderPaper() {
     for (const m of orderPending.matchedItems) {
@@ -620,6 +644,22 @@ ${itemCatalog}
     });
     const rawName = syscoPending.unmatched[idx]?.name;
     if (rawName) setAliases(prev => ({ ...prev, [rawName.trim().toLowerCase()]: itemId }));
+  }
+  function addNewFromSyscoUnmatched(idx, typedName) {
+    const name = (typedName || '').trim();
+    if (!name) return;
+    const newId = genId();
+    setItems(prev => [...prev, { id: newId, cat: 'produce', name, prices: {} }]);
+    setSyscoPending(prev => {
+      const u = prev.unmatched[idx];
+      return {
+        ...prev,
+        unmatched: prev.unmatched.filter((_,i)=>i!==idx),
+        matchedItems: [...prev.matchedItems, { key: newId, itemId: newId, itemName: name, qty: u.qty, include: true }]
+      };
+    });
+    const rawName = syscoPending.unmatched[idx]?.name;
+    if (rawName) setAliases(prev => ({ ...prev, [rawName.trim().toLowerCase()]: newId }));
   }
   function applySyscoOrder() {
     const itemsMap = {};
@@ -1151,17 +1191,36 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
             ))}
             {orderPending.unmatched.length > 0 && (
               <div style={{ marginTop:8 }}>
-                <div style={{ fontSize:11, color:'#92400e', fontWeight:700, marginBottom:6 }}>매칭 안 됨 — 뭔지 골라서 연결해줘:</div>
-                {orderPending.unmatched.map((u,i) => (
-                  <div key={i} style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:9, padding:'8px 10px', marginBottom:6 }}>
-                    <div style={{ fontSize:12, marginBottom:6 }}>{u.name} <span style={{color:'#92400e',fontWeight:700}}>× {u.qty}</span></div>
-                    <select defaultValue="" onChange={e=>linkOrderUnmatched(i, e.target.value)}
-                      style={{ width:'100%', boxSizing:'border-box', padding:'6px 8px', borderRadius:6, border:'1px solid #ddd', fontSize:12, background:'#fff' }}>
-                      <option value="">이 품목이 뭔지 선택...</option>
-                      {items.map(it => <option key={it.id} value={it.id}>{CAT_LABEL[it.cat]} · {it.name}</option>)}
-                    </select>
-                  </div>
-                ))}
+                <div style={{ fontSize:11, color:'#92400e', fontWeight:700, marginBottom:6 }}>매칭 안 됨 — 검색해서 연결하거나, 없으면 새 품목으로 추가:</div>
+                {orderPending.unmatched.map((u,i) => {
+                  const q = (orderSearchText[i] || '').trim().toLowerCase();
+                  const results = q ? items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 20) : [];
+                  const exactExists = q && items.some(it => it.name.toLowerCase() === q);
+                  return (
+                    <div key={i} style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:9, padding:'8px 10px', marginBottom:6 }}>
+                      <div style={{ fontSize:12, marginBottom:6 }}>{u.name} <span style={{color:'#92400e',fontWeight:700}}>× {u.qty}</span></div>
+                      <input value={orderSearchText[i]||''} onChange={e=>setOrderSearchText(p=>({...p,[i]:e.target.value}))}
+                        placeholder="검색하거나 새 이름 직접 입력..."
+                        style={{ width:'100%', boxSizing:'border-box', padding:'7px 9px', borderRadius:6, border:'1px solid #ddd', fontSize:12, background:'#fff' }} />
+                      {results.length > 0 && (
+                        <div style={{ maxHeight:160, overflowY:'auto', border:'1px solid #eee', borderRadius:6, marginTop:5, background:'#fff' }}>
+                          {results.map(it => (
+                            <div key={it.id} onClick={()=>linkOrderUnmatched(i, it.id)}
+                              style={{ padding:'7px 9px', fontSize:12, borderBottom:'1px solid #f5f5f5', cursor:'pointer' }}>
+                              <span style={{color:'#999',fontSize:10}}>{CAT_LABEL[it.cat]}</span> · {it.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {q && !exactExists && (
+                        <button onClick={()=>addNewFromOrderUnmatched(i, orderSearchText[i])}
+                          style={{ width:'100%', marginTop:5, padding:'7px 0', borderRadius:6, border:'1px dashed #d97706', background:'#fff', color:'#92400e', fontSize:11.5, fontWeight:700, cursor:'pointer' }}>
+                          + "{orderSearchText[i]}" 새 품목으로 추가
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 12, position: 'sticky', bottom: 0, background: '#fff', paddingTop: 8 }}>
@@ -1189,17 +1248,36 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
             ))}
             {syscoPending.unmatched.length > 0 && (
               <div style={{ marginTop:8 }}>
-                <div style={{ fontSize:11, color:'#92400e', fontWeight:700, marginBottom:6 }}>매칭 안 됨 — 뭔지 골라서 연결해줘:</div>
-                {syscoPending.unmatched.map((u,i) => (
-                  <div key={i} style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:9, padding:'8px 10px', marginBottom:6 }}>
-                    <div style={{ fontSize:12, marginBottom:6 }}>{u.name} <span style={{color:'#92400e',fontWeight:700}}>× {u.qty}</span></div>
-                    <select defaultValue="" onChange={e=>linkSyscoUnmatched(i, e.target.value)}
-                      style={{ width:'100%', boxSizing:'border-box', padding:'6px 8px', borderRadius:6, border:'1px solid #ddd', fontSize:12, background:'#fff' }}>
-                      <option value="">이 품목이 뭔지 선택...</option>
-                      {items.map(it => <option key={it.id} value={it.id}>{CAT_LABEL[it.cat]} · {it.name}</option>)}
-                    </select>
-                  </div>
-                ))}
+                <div style={{ fontSize:11, color:'#92400e', fontWeight:700, marginBottom:6 }}>매칭 안 됨 — 검색해서 연결하거나, 없으면 새 품목으로 추가:</div>
+                {syscoPending.unmatched.map((u,i) => {
+                  const q = (syscoSearchText[i] || '').trim().toLowerCase();
+                  const results = q ? items.filter(it => it.name.toLowerCase().includes(q)).slice(0, 20) : [];
+                  const exactExists = q && items.some(it => it.name.toLowerCase() === q);
+                  return (
+                    <div key={i} style={{ background:'#fffbeb', border:'1px solid #fde68a', borderRadius:9, padding:'8px 10px', marginBottom:6 }}>
+                      <div style={{ fontSize:12, marginBottom:6 }}>{u.name} <span style={{color:'#92400e',fontWeight:700}}>× {u.qty}</span></div>
+                      <input value={syscoSearchText[i]||''} onChange={e=>setSyscoSearchText(p=>({...p,[i]:e.target.value}))}
+                        placeholder="검색하거나 새 이름 직접 입력..."
+                        style={{ width:'100%', boxSizing:'border-box', padding:'7px 9px', borderRadius:6, border:'1px solid #ddd', fontSize:12, background:'#fff' }} />
+                      {results.length > 0 && (
+                        <div style={{ maxHeight:160, overflowY:'auto', border:'1px solid #eee', borderRadius:6, marginTop:5, background:'#fff' }}>
+                          {results.map(it => (
+                            <div key={it.id} onClick={()=>linkSyscoUnmatched(i, it.id)}
+                              style={{ padding:'7px 9px', fontSize:12, borderBottom:'1px solid #f5f5f5', cursor:'pointer' }}>
+                              <span style={{color:'#999',fontSize:10}}>{CAT_LABEL[it.cat]}</span> · {it.name}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {q && !exactExists && (
+                        <button onClick={()=>addNewFromSyscoUnmatched(i, syscoSearchText[i])}
+                          style={{ width:'100%', marginTop:5, padding:'7px 0', borderRadius:6, border:'1px dashed #d97706', background:'#fff', color:'#92400e', fontSize:11.5, fontWeight:700, cursor:'pointer' }}>
+                          + "{syscoSearchText[i]}" 새 품목으로 추가
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, marginTop: 12, position: 'sticky', bottom: 0, background: '#fff', paddingTop: 8 }}>
@@ -1275,7 +1353,11 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
             <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>모델</div>
             <input value={model} onChange={e=>setModel(e.target.value)} placeholder="claude-haiku-4-5-20251001"
               style={{ width:'100%', boxSizing:'border-box', padding:'9px 10px', borderRadius:8, border:'1px solid #ddd', fontSize:12.5, marginBottom:4 }} />
-            <div style={{ fontSize: 10, color: '#aaa', marginBottom: 16 }}>기본값 claude-haiku-4-5-20251001 (저렴하고 충분히 정확함). 손글씨가 유독 지저분한 인보이스에서 자꾸 틀리면 claude-sonnet-5로 바꿔봐도 돼.</div>
+            <div style={{ fontSize: 10, color: '#aaa', marginBottom: 16 }}>기본값 claude-haiku-4-5-20251001 (Sysco/인쇄된 인보이스 인식용, 저렴하고 충분히 정확함).</div>
+            <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>모델 (손글씨 오더페이퍼 전용)</div>
+            <input value={handwritingModel} onChange={e=>setHandwritingModel(e.target.value)} placeholder="claude-sonnet-5"
+              style={{ width:'100%', boxSizing:'border-box', padding:'9px 10px', borderRadius:8, border:'1px solid #ddd', fontSize:12.5, marginBottom:4 }} />
+            <div style={{ fontSize: 10, color: '#aaa', marginBottom: 16 }}>손글씨 인식은 더 어려운 작업이라 정확도 높은 모델을 따로 씀. 계속 틀리면 claude-opus-4-8로 올려봐도 돼.</div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={()=>setShowSettings(false)} style={{ flex:1, padding:11, borderRadius:9, border:'1px solid #ddd', background:'#f9fafb', fontSize:13, cursor:'pointer' }}>닫기</button>
               <button onClick={()=>{ setUploadError(null); setShowSettings(false); }} style={{ flex:1, padding:11, borderRadius:9, border:'none', background:'#111', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>저장</button>
