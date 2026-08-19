@@ -162,6 +162,10 @@ const INIT_ITEMS = [
   { id:'p29', cat:'produce', name:'Napa Cabbage', prices:{ hmart:{v:28.00,u:'/CS',d:'7/30'} } },
   { id:'p30', cat:'produce', name:'Seedless Watermelon', prices:{ hmart:{v:7.00,u:'/CS',d:'7/30'} } },
   { id:'p31', cat:'produce', name:'Korean Singo Pears 3pc/22Lb', prices:{ wang:{v:26.00,u:'/Cart',d:'7/30'} } },
+  { id:'p32', cat:'produce', name:'Thai Chili', prices:{} },
+  { id:'p33', cat:'produce', name:'Celery', prices:{} },
+  { id:'p34', cat:'produce', name:'Cilantro', prices:{} },
+  { id:'p35', cat:'produce', name:'Avocado', prices:{} },
 
   // PAPER
   { id:'x1',  cat:'paper', name:'Food Service Aluminum Foil Roll (12 inch)', prices:{ ej:{v:35.00,u:'/Roll',d:'7/3'} } },
@@ -208,6 +212,14 @@ const INIT_ITEMS = [
   { id:'x42', cat:'paper', name:'Reliance Soap Hand Foam Orange 4/750ML', prices:{} },
   { id:'x43', cat:'paper', name:"Pad Scour Green 6x9 Antimicrobial 1/20 Ct", prices:{} },
   { id:'x44', cat:'paper', name:'Glove Nitrile Foodservice Powder-free Black Large', prices:{} },
+  { id:'x45', cat:'paper', name:'16 oz cup LIDS (ONLY LIDS)', prices:{} },
+  { id:'x46', cat:'paper', name:'Garbage Bags #33', prices:{} },
+  { id:'x47', cat:'paper', name:'Keystone Detergent Dishwashing Liquid Dispenser 1/2.5GAL (RED)', prices:{} },
+  { id:'x48', cat:'paper', name:'Liquid Soap', prices:{} },
+  { id:'x49', cat:'paper', name:'Gloves (M) Clear', prices:{} },
+  { id:'x50', cat:'paper', name:'Gloves (L) Clear', prices:{} },
+  { id:'x51', cat:'paper', name:'No-Rinse Alkaline Floor Cleaner', prices:{} },
+  { id:'x52', cat:'paper', name:'Sanitizer Oasis 146 Multi Quat (Red)', prices:{} },
 
   // BAR & BEVERAGES
   { id:'b1', cat:'bar', name:'Coca Cola Classic Can', prices:{} },
@@ -243,6 +255,27 @@ function rankVendorsFiltered(prices, allowedIds) {
   return entries.map(([vendor]) => vendor);
 }
 function fmtQty(n) { return Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, ''); }
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[m][n];
+}
+function tokensClose(a, b) {
+  if (a === b) return true;
+  if (a.length < 5 || b.length < 5) return false; // 짧은 단어는 오타 허용 시 오탐 위험이 커서 정확히 일치해야만 인정
+  const d = levenshtein(a, b);
+  return d <= 2 && d / Math.max(a.length, b.length) <= 0.3;
+}
 function fuzzyMatchItem(name, items) {
   const norm = s => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
   const target = norm(name);
@@ -252,7 +285,8 @@ function fuzzyMatchItem(name, items) {
     if (cand === target) return it;
     const tTokens = new Set(name.toLowerCase().split(/\s+/).filter(w=>w.length>1));
     const cTokens = new Set(it.name.toLowerCase().split(/\s+/).filter(w=>w.length>1));
-    let overlap = 0; for (const t of tTokens) if (cTokens.has(t)) overlap++;
+    let overlap = 0; for (const t of tTokens) { if (cTokens.has(t)) { overlap++; continue; } for (const c of cTokens) { if (tokensClose(t, c)) { overlap++; break; } } }
+    if (overlap < 2) continue; // 겹치는 단어가 1개뿐이면 오탐 위험이 커서 제외 (예: "radish" 하나로 "Korean Radish"에 잘못 매칭되는 것 방지)
     const score = overlap / Math.max(Math.min(tTokens.size, cTokens.size), 1);
     if (score > bestScore) { bestScore = score; best = it; }
   }
@@ -307,7 +341,11 @@ function App() {
     date: '8/9',
     items: { m6:1, m9:1, m21:2, f10:1, c3:1, x38:5, m4:1, m15:4, c21:1, p25:1, x36:1, b1:3, b2:2, b3:1, b4:1, b5:1, b6:1, b7:1, x44:1 }
   }); // 8/9 시스코 주문완료 19개 전부 반영됨
-  const [aliases, setAliases] = useState({}); // 인식된 원문 이름(소문자) -> itemId, 한번 수동 연결하면 계속 기억
+  const [aliases, setAliases] = useState({
+    'pears': 'p31', 'pear': 'p31',
+    'ginger root': 'p28',
+    'tai chilli': 'p32', 'tai chili': 'p32', 'thai chilli': 'p32',
+  }); // 인식된 원문 이름(소문자) -> itemId, 한번 수동 연결하면 계속 기억
   const [orderSearchText, setOrderSearchText] = useState({}); // 매칭안됨 idx -> 검색어
   const [syscoSearchText, setSyscoSearchText] = useState({});
   const [apiKey, setApiKey] = useState('');
@@ -325,7 +363,7 @@ function App() {
         if (s.meta) setMeta(s.meta);
         if (s.cart) setCart(s.cart);
         if (s.syscoToday) setSyscoToday(s.syscoToday);
-        if (s.aliases) setAliases(s.aliases);
+        if (s.aliases) setAliases(prev => ({ ...prev, ...s.aliases }));
         if (s.apiKey) setApiKey(s.apiKey);
         if (s.model) setModel(s.model);
         if (s.handwritingModel) setHandwritingModel(s.handwritingModel);
@@ -479,6 +517,7 @@ function App() {
 - 표의 모든 행을 위에서 아래까지 하나도 빠짐없이 확인하세요. 특히 표 맨 아래쪽, 페이지 하단, 여백에 적힌 항목을 놓치기 쉬우니 두 번 확인하세요.
 - 숫자는 정수뿐 아니라 0.5, 1.5 같은 반 단위(half-case)로도 자주 적혀있습니다. 흐린 연필/볼펜 자국, 겹쳐 쓴 숫자, 작은 소수점을 특히 주의해서 정확히 읽으세요. 확신이 안 서면 이미지를 다시 자세히 보고 가장 가능성 높은 값을 쓰세요.
 - 숫자가 지워지거나 겹쳐써진 경우 최종적으로 남은(가장 나중에 쓴) 숫자를 사용하세요.
+- 품목명이나 숫자가 너무 흐리거나 잘려서 도저히 못 읽겠으면, 억지로 카탈로그의 비슷한 이름으로 추측하지 말고 그 행은 통째로 건너뛰세요(추출하지 마세요). 잘못된 추측보다 빠뜨리는 게 낫습니다.
 ## 카탈로그 품목명(매칭 참고용, 없는 품목이어도 원문 이름 그대로 포함):
 ${itemCatalog}
 다른 설명 없이 JSON만 응답: {"items":[{"name":"...","qty":2}]}` }
@@ -747,7 +786,8 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
         if (cand === target) return { item: it, score: 1 };
         const tTokens = new Set(name.toLowerCase().split(/\s+/).filter(w=>w.length>1));
         const cTokens = new Set(it.name.toLowerCase().split(/\s+/).filter(w=>w.length>1));
-        let overlap = 0; for (const t of tTokens) if (cTokens.has(t)) overlap++;
+        let overlap = 0; for (const t of tTokens) { if (cTokens.has(t)) { overlap++; continue; } for (const c of cTokens) { if (tokensClose(t, c)) { overlap++; break; } } }
+        if (overlap < 2) continue;
         const score = overlap / Math.max(Math.min(tTokens.size, cTokens.size), 1);
         if (score > bestScore) { bestScore = score; best = { item: it, score }; }
       }
