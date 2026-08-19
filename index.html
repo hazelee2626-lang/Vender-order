@@ -742,10 +742,11 @@ ${itemCatalog}
               model, max_tokens: 3000,
               messages: [{ role: 'user', content: [
                 block,
-                { type: 'text', text: `한국 BBQ 레스토랑의 벤더 인보이스입니다.
+                { type: 'text', text: `한국 BBQ 레스토랑(Handam BBQ)의 외부 벤더 인보이스입니다. 이 사진은 우리 가게가 다른 거래처(EJ, KOT, Sysco, Ken's, H Mart 등)로부터 받은 매입 인보이스이며, 반드시 가격이 적혀 있어야 합니다.
+매우 중요: 사진 상단에 "HANDAM BBQ" 로고나 이름이 보여도 그건 우리 가게 자체 문서(주문지, 체크리스트 등)의 letterhead일 뿐이니 절대 벤더 이름으로 인식하지 마세요. "HANDAM"이나 우리 가게 이름을 vendor_id나 new_vendor로 쓰는 것은 금지입니다. 만약 사진에 실제 외부 벤더의 이름/로고나 가격 정보가 전혀 없다면(즉 우리 가게 자체 주문지처럼 보이면), items를 빈 배열로 응답하세요 — 절대 추측해서 벤더나 가격을 만들어내지 마세요.
 ## 벤더: ${vendorList}
 ## 품목: ${itemCatalog}
-규칙: 벤더id 매칭(신규면 new_vendor), 품목매칭(matched=true, 기존명 사용/아니면 false), 가격은 /lb 우선.
+규칙: 벤더id 매칭(신규면 new_vendor, 단 위 금지 규칙 준수), 품목매칭(matched=true, 기존명 사용/아니면 false), 가격은 /lb 우선.
 JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice_no":"번호|null","items":[{"matched":true,"name":"...","price":7.49,"unit":"/lb"}]}` }
               ]}]
             })
@@ -759,6 +760,11 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
           const text = data.content?.filter(c => c.type === 'text').map(c => c.text).join('') || '';
           if (!text) { results.push({ error: '응답 텍스트 없음' }); continue; }
           const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+          const looksLikeSelf = (s) => !!s && s.toLowerCase().replace(/[^a-z]/g, '').includes('handam');
+          if (looksLikeSelf(parsed.new_vendor) || looksLikeSelf(parsed.vendor_id)) {
+            results.push({ error: '이 사진은 벤더 인보이스가 아니라 우리 가게 자체 문서로 보여요 (Handam BBQ 로고를 벤더로 착각함). "오더페이퍼 업로드"를 사용해주세요.' });
+            continue;
+          }
           if (parsed.vendor_id && !vendors.find(v => v.id === parsed.vendor_id)) {
             parsed.new_vendor = parsed.new_vendor || parsed.vendor_id; parsed.vendor_id = null;
           }
@@ -925,7 +931,7 @@ JSON만: {"vendor_id":"id|null","new_vendor":"이름|null","date":"M/D","invoice
               장바구니{cartCount > 0 && ` (${cartCount})`}
             </button>
             <label style={{ background: '#111', color: '#fff', padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-              업로드
+              💰 벤더 인보이스
               <input type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }}
                 onChange={e => { if (e.target.files.length) processImages([...e.target.files]); e.target.value = ''; }} />
             </label>
